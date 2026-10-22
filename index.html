@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0d0f1a">
+  <meta name="description" content="Schmoop Quest: a retro pixel-art dog game. Sniff out the snacks before home time!">
+  <!-- Add to Home Screen: opens full screen like an app -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Schmoop Quest">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="icon" href="icon-192.png">
+  <title>Schmoop Quest</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="game" width="800" height="450"></canvas>
+
+  <!-- Plain scripts (not ES modules) so the game runs by double-clicking this file. Order matters. -->
+  <script src="js/art/painter.js"></script>
+  <script src="js/art/font.js"></script>
+  <script src="js/art/dogsheets.js"></script>
+  <script src="js/art/dogs.js"></script>
+  <script src="js/art/people.js"></script>
+  <script src="js/art/animals.js"></script>
+  <script src="js/art/items.js"></script>
+  <script src="js/art/props.js"></script>
+  <script src="js/art/terrain.js"></script>
+  <script src="js/sprites.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/touch.js"></script>
+  <script src="js/world.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>

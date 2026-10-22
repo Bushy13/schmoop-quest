@@ -1,0 +1,5 @@
+# Mac clutter
+.DS_Store
+
+# Links into the Sprite Fusion account (kept on this Mac only)
+art_src/spritefusion/asset_ids.txt
