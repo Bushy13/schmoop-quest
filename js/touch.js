@@ -1,4 +1,5 @@
-// On-screen controls for phones and tablets: a joystick on the left, hold-to-act buttons on the right,
+// On-screen controls for phones and tablets: a joystick on the right, hold-to-act buttons on the left
+// (Options > JOYSTICK swaps them: body.stick-left),
 // a pause / back button in the top corner, and two big tap pads for tug of war and the snake.
 // Every control just presses the same keys the keyboard does (it sends fake key events), so the
 // game itself doesn't know or care whether you're using a keyboard or your thumbs.
@@ -86,7 +87,7 @@ const TouchUI = (() => {
   corner.addEventListener('pointerup', () => corner.classList.remove('down'));
   corner.addEventListener('pointercancel', () => corner.classList.remove('down'));
 
-  // ---- The joystick: it appears wherever your thumb lands on the left side ----
+  // ---- The joystick: it appears wherever your thumb lands on its side of the screen ----
   const STICK_R = 46, DEAD = 12;
   let origin = null;
   function resetStick() {

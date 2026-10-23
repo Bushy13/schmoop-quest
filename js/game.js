@@ -1,7 +1,11 @@
 // Schmoop Quest: main loop, input, game states, gameplay systems and rendering.
 
 (() => {
-  const VIEW_W = 800, VIEW_H = 450;
+  // The screen is VIEW_W x VIEW_H game pixels: 800x450 on a computer. A phone or tablet fills its
+  // screen instead (see resize), and VIEW_W/VIEW_H briefly shrink while the zoomed-in playing field
+  // is updated and drawn (inPlayView), so everything that reads them lays out for what's on screen
+  const BASE_H = 450;
+  let VIEW_W = 800, VIEW_H = BASE_H;
   // Distances and speeds are in tiles (× TILE) so they scale with the art
   const WALK_SPEED = 4.5 * TILE, SPRINT_SPEED = 7.8 * TILE, ZOOMIES_SPEED = 9.7 * TILE;
   const SNIFF_COOLDOWN = 5, SNIFF_TIME = 4, SNIFF_RADIUS = 7.5 * TILE; // about 5 metres (a car is 7 tiles long, a bed 3)
@@ -41,20 +45,50 @@
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
 
-  // Fill the window: a whole-number scale keeps pixels perfectly even; if that would leave a lot of
-  // the window empty, use an in-between scale instead
+  // Fill the window. A computer keeps 800x450 at a whole-number scale (perfectly even pixels; an
+  // in-between scale if that would leave a lot of the window empty). A phone or tablet widens the
+  // view to its screen's shape (up to 1200 wide) so there are no empty side strips, and a small
+  // phone zooms the playing field in (up to 1.5x) so the dog, snacks and HUD are big enough to read.
+  // The canvas is drawn at up to 2x resolution there, so the zoomed pixels stay even.
+  const layout = { touch: false, w: 800, zoom: 1, res: 1, playW: 800, playH: BASE_H };
   function resize() {
     const vw = window.visualViewport ? visualViewport.width : innerWidth, vh = window.visualViewport ? visualViewport.height : innerHeight;
-    const fit = Math.min(vw / VIEW_W, vh / VIEW_H);
-    const whole = Math.floor(fit);
-    const s = whole >= 1 && whole / fit >= 0.9 ? whole : Math.max(0.5, fit);
-    canvas.style.width = Math.floor(VIEW_W * s) + 'px';
-    canvas.style.height = Math.floor(VIEW_H * s) + 'px';
+    layout.touch = TouchUI.on;
+    let s;
+    if (layout.touch) {
+      layout.w = Math.round(Math.max(800, Math.min(1200, (BASE_H * vw) / vh)));
+      s = Math.min(vw / layout.w, vh / BASE_H);
+      const zoom = options.zoom && Math.min(vw, vh) < 520 ? Math.min(1.5, Math.max(1, 1.2 / s)) : 1;
+      layout.playH = Math.round(BASE_H / zoom);
+      layout.zoom = BASE_H / layout.playH;
+      layout.playW = Math.ceil(layout.w / layout.zoom);
+      layout.res = Math.min(2, Math.max(1, Math.round(s * (window.devicePixelRatio || 1))));
+    } else {
+      Object.assign(layout, { w: 800, zoom: 1, res: 1, playW: 800, playH: BASE_H });
+      const fit = Math.min(vw / 800, vh / BASE_H), whole = Math.floor(fit);
+      s = whole >= 1 && whole / fit >= 0.9 ? whole : Math.max(0.5, fit);
+    }
+    VIEW_W = layout.w; VIEW_H = BASE_H;
+    if (canvas.width !== layout.w * layout.res) canvas.width = layout.w * layout.res;
+    if (canvas.height !== BASE_H * layout.res) canvas.height = BASE_H * layout.res;
+    canvas.style.width = Math.floor(layout.w * s) + 'px';
+    canvas.style.height = Math.floor(BASE_H * s) + 'px';
   }
   addEventListener('resize', resize);
   addEventListener('orientationchange', () => setTimeout(resize, 150));
   if (window.visualViewport) visualViewport.addEventListener('resize', resize);
-  resize();
+  // (first called once the options have loaded, below)
+
+  // Run fn with the zoomed-in playing field as the screen; draw = also zoom the drawing
+  function inPlayView(fn, draw) {
+    const w = VIEW_W, h = VIEW_H;
+    VIEW_W = layout.playW; VIEW_H = layout.playH;
+    if (draw) { ctx.save(); ctx.scale(layout.zoom, layout.zoom); }
+    try { fn(); } finally {
+      if (draw) ctx.restore();
+      VIEW_W = w; VIEW_H = h;
+    }
+  }
 
   // ---- Input ----
   const keys = new Set();
@@ -97,8 +131,8 @@
   const mouse = { x: -1, y: -1, moved: false, clicked: false };
   function trackMouse(e) {
     const r = canvas.getBoundingClientRect();
-    mouse.x = ((e.clientX - r.left) * VIEW_W) / r.width;
-    mouse.y = ((e.clientY - r.top) * VIEW_H) / r.height;
+    mouse.x = ((e.clientX - r.left) * layout.w) / r.width;
+    mouse.y = ((e.clientY - r.top) * BASE_H) / r.height;
     mouse.moved = true;
   }
   canvas.addEventListener('mousemove', trackMouse);
@@ -176,11 +210,14 @@
   }
   unlocked = Math.min(LEVEL_COUNT, unlocked);
   // Options: volumes (0-10), screen shake, and reduced motion (no shake, freeze-frames, slow-mo or wipes)
-  const options = { music: 10, sound: 10, shake: true, calm: false };
+  // Phones and tablets also: which side the joystick is on, and zooming in on small screens
+  const options = { music: 10, sound: 10, shake: true, calm: false, stickLeft: false, zoom: true };
   try { Object.assign(options, JSON.parse(store.get(KEYS.options) || '{}')); } catch (e) { /* keep the defaults */ }
   function applyOptions() {
     Sfx.setVolume(options.sound / 10);
     Music.setVolume(options.music / 10);
+    document.body.classList.toggle('stick-left', options.stickLeft);
+    resize();
     store.set(KEYS.options, JSON.stringify(options));
   }
   applyOptions();
@@ -3171,7 +3208,7 @@
   // The mode's bit of the HUD: the tally (Menace Run, Fetch) or the begging meter
   function renderModeHUD() {
     if (menace) {
-      const board = menaceBoard(), x = VIEW_W - 150, y = 22;
+      const board = menaceBoard(), x = VIEW_W - 150, y = touchOn() ? 50 : 22; // (below the pause button on a phone)
       ctx.fillStyle = 'rgba(10,12,20,0.72)'; ctx.fillRect(x, y, 144, 14 + Math.min(3, board.length) * 14);
       drawText(ctx, world.rivalDog ? 'THE RACE' : 'TOP MENACES', x + 8, y + 4, { color: '#ffd84a' });
       board.slice(0, 3).forEach((b, i) => {
@@ -3181,7 +3218,7 @@
       });
     }
     if (fetchGame) {
-      const f = fetchGame, x = VIEW_W - 170, y = 22;
+      const f = fetchGame, x = VIEW_W - 170, y = touchOn() ? 50 : 22;
       ctx.fillStyle = 'rgba(10,12,20,0.72)'; ctx.fillRect(x, y, 164, 44);
       drawText(ctx, `THROW ${Math.min(f.round, FETCH_THROWS)} OF ${FETCH_THROWS}`, x + 8, y + 4, { color: '#ffd84a' });
       drawText(ctx, `YOU ${f.you}  -  ${f.rival.name} ${f.them}`, x + 8, y + 18, { scale: 1, color: '#ffffff' });
@@ -3793,9 +3830,13 @@
     { label: 'SOUND VOLUME', key: 'sound', range: true },
     { label: 'SCREEN SHAKE', key: 'shake' },
     { label: 'REDUCED MOTION', key: 'calm', hint: 'NO SHAKE, FREEZE-FRAMES, SLOW-MO OR WIPES' },
+    { label: 'JOYSTICK', key: 'stickLeft', touch: true, words: ['RIGHT', 'LEFT'], hint: 'WHICH SIDE YOUR THUMB STEERS FROM (THE BUTTONS GO ON THE OTHER)' },
+    { label: 'PHONE ZOOM', key: 'zoom', touch: true, hint: 'A BIGGER DOG AND BIGGER WRITING ON A SMALL SCREEN' },
     { label: 'BACK' },
   ];
-  const optionRects = () => OPTION_ROWS.map((_, i) => ({ x: VIEW_W / 2 - 220, y: 130 + i * 40, w: 440, h: 30 }));
+  // (the joystick and zoom rows only show on a phone or tablet)
+  const optionRows = () => OPTION_ROWS.filter(r => !r.touch || touchOn());
+  const optionRects = () => optionRows().map((_, i, rows) => ({ x: VIEW_W / 2 - 220, y: (rows.length > 5 ? 104 : 130) + i * (rows.length > 5 ? 34 : 40), w: 440, h: 30 }));
   function openOptions(from) { optionsReturn = from; optionsMenu.idx = 0; setState('options'); }
   function changeOption(row, step) {
     if (!row.key) return;
@@ -3806,7 +3847,8 @@
   }
   function updateOptions() {
     if (hit('Escape')) { setState(optionsReturn); return; }
-    const row = OPTION_ROWS[optionsMenu.idx];
+    optionsMenu.idx = Math.min(optionsMenu.idx, optionRows().length - 1);
+    const row = optionRows()[optionsMenu.idx];
     if (hit(...LEFT)) changeOption(row, -1);
     if (hit(...RIGHT)) changeOption(row, 1);
     if (mouse.clicked) { // clicking a volume: left half turns it down, right half up
@@ -3815,7 +3857,7 @@
     }
     const choice = menuInput(optionsMenu, optionRects());
     if (choice < 0) return;
-    const chosen = OPTION_ROWS[choice];
+    const chosen = optionRows()[choice];
     if (!chosen.key) setState(optionsReturn);
     else if (!chosen.range) changeOption(chosen, 1);
   }
@@ -3823,7 +3865,7 @@
     renderBackdrop();
     drawText(ctx, 'OPTIONS', VIEW_W / 2, 50, { scale: 4, align: 'center', color: '#ffd84a', shadow: '#7a3b10' });
     optionRects().forEach((r, i) => {
-      const row = OPTION_ROWS[i], on = i === optionsMenu.idx;
+      const row = optionRows()[i], on = i === optionsMenu.idx;
       ctx.fillStyle = on ? 'rgba(255,216,74,0.16)' : 'rgba(8,10,20,0.6)'; ctx.fillRect(r.x, r.y, r.w, r.h);
       if (!row.key) { drawText(ctx, (on ? '> ' : '') + row.label + (on ? ' <' : ''), VIEW_W / 2, r.y + 9, { scale: 2, align: 'center', color: on ? '#ffd84a' : '#ffffff' }); return; }
       drawText(ctx, row.label, r.x + 14, r.y + 9, { scale: 2, color: on ? '#ffd84a' : '#ffffff' });
@@ -3831,10 +3873,10 @@
         const v = options[row.key];
         for (let k = 0; k < 10; k++) { ctx.fillStyle = k < v ? (on ? '#ffd84a' : '#cfd3e0') : 'rgba(255,255,255,0.15)'; ctx.fillRect(r.x + 250 + k * 15, r.y + 8, 11, 14); }
         if (on) { drawText(ctx, '<', r.x + 236, r.y + 9, { scale: 2, color: '#ffd84a' }); drawText(ctx, '>', r.x + 404, r.y + 9, { scale: 2, color: '#ffd84a' }); }
-      } else drawText(ctx, options[row.key] ? 'ON' : 'OFF', r.x + r.w - 14, r.y + 9, { scale: 2, align: 'right', color: options[row.key] ? '#7fe08a' : '#9a9a9a' });
+      } else drawText(ctx, row.words ? row.words[+options[row.key]] : options[row.key] ? 'ON' : 'OFF', r.x + r.w - 14, r.y + 9, { scale: 2, align: 'right', color: row.words || options[row.key] ? '#7fe08a' : '#9a9a9a' });
     });
-    const hint = OPTION_ROWS[optionsMenu.idx].hint;
-    if (hint) drawText(ctx, hint, VIEW_W / 2, 336, { align: 'center', color: '#cfd3e0' });
+    const hint = (optionRows()[optionsMenu.idx] || {}).hint;
+    if (hint) drawText(ctx, hint, VIEW_W / 2, optionRects().slice(-1)[0].y + 44, { align: 'center', color: '#cfd3e0' });
     drawText(ctx, say('UP/DOWN: PICK   LEFT/RIGHT: CHANGE   ESC: BACK', 'TAP THE LEFT / RIGHT OF A VOLUME TO CHANGE IT   X: BACK'), VIEW_W / 2, VIEW_H - 30, { align: 'center', color: '#ffd84a' });
   }
 
@@ -4024,9 +4066,10 @@
     for (const d of drops) { d.y += 520 * d.s * dt; d.x -= 90 * d.s * dt; if (d.y > VIEW_H) { d.y = -10; d.x = Math.random() * (VIEW_W + 100); } }
   }
 
-  function updateCamera() {
-    cam.x = Math.round(Math.max(0, Math.min(world.pxW - VIEW_W, dog.x - VIEW_W / 2)));
-    cam.y = Math.round(Math.max(0, Math.min(world.pxH - VIEW_H, dog.y - 24 - VIEW_H / 2)));
+  function updateCamera() { // (always frames the playing field, even when called from a menu)
+    const w = layout.playW, h = layout.playH;
+    cam.x = Math.round(Math.max(0, Math.min(world.pxW - w, dog.x - w / 2)));
+    cam.y = Math.round(Math.max(0, Math.min(world.pxH - h, dog.y - 24 - h / 2)));
   }
 
   // ---- Rendering ----
@@ -4043,6 +4086,7 @@
   const sx = x => Math.round(x - cam.x), sy = y => Math.round(y - cam.y);
 
   function render() {
+    ctx.setTransform(layout.res, 0, 0, layout.res, 0, 0);
     ctx.imageSmoothingEnabled = false;
     if (state === 'title') { renderTitle(); return; }
     if (state === 'select') { renderSelect(); return; }
@@ -4051,6 +4095,15 @@
     if (state === 'options') { renderOptions(); return; }
     if (state === 'vetTrip') { renderVetTrip(); return; }
     if (state === 'ending') { renderEnding(); return; }
+    // The playing field and HUD, zoomed in on a phone; the menus and mini-games over it aren't
+    inPlayView(renderPlay, true);
+    if (state === 'snake') renderSnakeGame();
+    if (state === 'tug') renderTugGame();
+    if (state === 'paused') renderPaused();
+    if (state === 'roundOver') renderResults();
+    if (state === 'intro') renderIntro();
+  }
+  function renderPlay() {
     // Screen shake and the last-snack punch-in move the world, not the HUD
     const punch = fx.punch > 0 ? Math.sin((1 - fx.punch / 1.1) * Math.PI) * 0.14 : 0;
     const sh = fx.shakeT > 0 ? fx.shakeAmp * Math.min(1, fx.shakeT / 0.15) : 0;
@@ -4070,20 +4123,15 @@
     // The round HUD hides behind the pause menu and results panel so they never overlap
     if (!['paused', 'roundOver', 'intro'].includes(state)) renderHUD(state !== 'snake' && state !== 'tug');
     if (state === 'playing' && banner > 0) renderBanner();
-    if (state === 'snake') renderSnakeGame();
-    if (state === 'tug') renderTugGame();
     if (callout) renderCallout();
-    if (state === 'paused') renderPaused();
-    if (state === 'roundOver') renderResults();
     if (fx.iris > 0) renderIris();
-    if (state === 'intro') renderIntro();
   }
 
   // The round opens through a growing paw-print-shaped hole in a black screen
   const IRIS_TIME = 0.7;
   let irisCanvas = null;
   function renderIris() {
-    if (!irisCanvas) { irisCanvas = document.createElement('canvas'); irisCanvas.width = VIEW_W; irisCanvas.height = VIEW_H; }
+    if (!irisCanvas || irisCanvas.width !== VIEW_W || irisCanvas.height !== VIEW_H) { irisCanvas = document.createElement('canvas'); irisCanvas.width = VIEW_W; irisCanvas.height = VIEW_H; }
     const g = irisCanvas.getContext('2d'), p = 1 - fx.iris / IRIS_TIME, R = p * p * 1100;
     const cx = sx(dog.x), cy = sy(dog.y - 20);
     g.globalCompositeOperation = 'source-over';
@@ -4784,7 +4832,7 @@
     const levels = lights.map(lightLevel);
     if (world.dark) {
       const w = Math.ceil(VIEW_W / LQ), h = Math.ceil(VIEW_H / LQ);
-      if (!lightCv) { lightCv = document.createElement('canvas'); lightCv.width = w; lightCv.height = h; lightG = lightCv.getContext('2d'); }
+      if (!lightCv || lightCv.width !== w || lightCv.height !== h) { lightCv = document.createElement('canvas'); lightCv.width = w; lightCv.height = h; lightG = lightCv.getContext('2d'); }
       const g = lightG;
       g.globalCompositeOperation = 'source-over';
       g.clearRect(0, 0, w, h);
@@ -5246,7 +5294,7 @@
     const scene = [];
     const tx0 = Math.floor(bx / TILE) - 3, ty0 = Math.floor(by / TILE) - 3;
     for (let ty = ty0; ty <= ty0 + 22; ty++) {
-      for (let tx = tx0; tx <= tx0 + 31; tx++) {
+      for (let tx = tx0; tx <= tx0 + Math.ceil(VIEW_W / TILE) + 6; tx++) {
         const v = w.variants[ty * w.W + tx], tile = w.get(tx, ty);
         if (!v || tx < 0 || ty < 0 || tx >= w.W || ty >= w.H) continue;
         const img = tile === T.TREE ? SPRITES.trees[v] : tile === T.BUSH ? SPRITES.bushes[v] : null;
@@ -5284,7 +5332,11 @@
     }
     const starsWon = Object.values(levelStats).reduce((a, st) => a + (st.stars || 0), 0);
     if (starsWon) drawText(ctx, `STARS COLLECTED ${starsWon}`, VIEW_W - 10, 8, { align: 'right', color: '#9a9a9a' });
+    if (touchOn() && IOS_TAB) drawText(ctx, 'FOR FULL SCREEN: TAP SHARE, THEN ADD TO HOME SCREEN', VIEW_W / 2, VIEW_H - 16, { align: 'center', color: '#fff3a0' });
   }
+  // An iPhone or iPad can't go full screen in a browser tab, only from a Home Screen icon
+  const IOS_TAB = (/iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) &&
+    !navigator.standalone && !matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches;
 
   function renderSelect() {
     renderBackdrop();
@@ -5343,7 +5395,7 @@
     HOWTO = [
       // Each control: the keys (drawn as key caps; < > ^ v are the arrows), what it does, and your dog doing it
       { title: 'CONTROLS', controls: [
-        { keys: touch ? ['STICK'] : ['<', '^', 'v', '>'], name: 'MOVE', lines: [touch ? 'PUT YOUR THUMB DOWN ON THE LEFT SIDE AND SLIDE.' : 'WALK ANYWHERE WITH THE ARROW KEYS.'], anim: dogAnim('run', 12), strips: ['run'] },
+        { keys: touch ? ['STICK'] : ['<', '^', 'v', '>'], name: 'MOVE', lines: [touch ? `PUT YOUR THUMB DOWN ON THE ${options.stickLeft ? 'LEFT' : 'RIGHT'} SIDE AND SLIDE.` : 'WALK ANYWHERE WITH THE ARROW KEYS.'], anim: dogAnim('run', 12), strips: ['run'] },
         { keys: [KEY_LABEL.sneak], hold: 'HOLD', name: 'SNEAK', lines: ['SLOW AND QUIET: CATS, GUARDS AND', 'SLEEPING OWNERS NOTICE YOU LESS.'], anim: dogAnim('slow', 10), strips: ['slow'] },
         { keys: [KEY_LABEL.bark], name: 'BARK', lines: ['SCARES BIRDS, DUCKS AND CATS. NOISY!', touch ? 'AT NIGHT OUTSIDE, HOLD IT TO HOWL.' : `AT NIGHT OUTSIDE, HOLD ${KEY_LABEL.bark} TO HOWL.`], anim: dogAnim('woof', 8), strips: ['woof'] },
         { keys: [KEY_LABEL.run], hold: 'HOLD', name: 'RUN', lines: ['FAST, BUT IT USES THE RUN BAR.', 'IT REFILLS WHEN YOU WALK.'], anim: dogAnim('sprint', 14), strips: ['sprint'] },
@@ -5599,13 +5651,16 @@
   }
 
   // ---- Main loop ----
+  // Screens that are menus (laid out on the whole screen); every other state is the playing field
+  const MENU_STATES = ['title', 'select', 'levels', 'howto', 'options', 'vetTrip', 'ending', 'paused', 'roundOver', 'intro'];
   let last = performance.now();
   function frame(now) {
     // Clamp both ways: the first rAF timestamp can be earlier than `last`, and a negative clock
     // would index animation frames at -1
     const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));
     last = now;
-    update(dt);
+    if (TouchUI.on !== layout.touch) resize(); // switched between keyboard and touch
+    if (MENU_STATES.includes(state)) update(dt); else inPlayView(() => update(dt));
     render();
     requestAnimationFrame(frame);
   }

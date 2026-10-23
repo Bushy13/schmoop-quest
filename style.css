@@ -18,7 +18,7 @@ body {
   justify-content: center;
 }
 
-/* The game renders at 320x180 and is scaled up by whole numbers to keep pixels crisp. */
+/* 800x450 on a computer, scaled up by whole numbers to keep pixels crisp; phones fill the screen (game.js resize) */
 canvas {
   display: block;
   image-rendering: pixelated;
@@ -40,18 +40,20 @@ body.touch .touch-ui {
 }
 .touch-ui .hidden { display: none !important; }
 
-/* The joystick: the whole left side is the touch area, while a level is playing */
+/* The joystick: the whole right side is the touch area, while a level is playing
+   (body.stick-left, from Options > JOYSTICK, swaps it with the buttons) */
 .stick-zone {
   position: absolute;
-  left: 0; top: 0; bottom: 0;
-  width: 45%;
+  right: 0; top: 0; bottom: 0;
+  width: 50%;
   display: none;
 }
+body.stick-left .stick-zone { right: auto; left: 0; }
 .touch-ui.playing .stick-zone { display: block; pointer-events: auto; }
 .stick-base {
   position: absolute;
-  left: calc(84px + env(safe-area-inset-left));
-  top: calc(100% - 84px - env(safe-area-inset-bottom));
+  left: calc(100% - 76px - env(safe-area-inset-right));
+  top: calc(100% - 76px - env(safe-area-inset-bottom));
   width: 112px; height: 112px;
   margin: -56px 0 0 -56px;
   border-radius: 50%;
@@ -60,6 +62,7 @@ body.touch .touch-ui {
   box-sizing: border-box;
   opacity: 0.55;
 }
+body.stick-left .stick-base { left: calc(76px + env(safe-area-inset-left)); }
 .stick-base.active { opacity: 1; }
 .stick-knob {
   position: absolute;
@@ -72,33 +75,40 @@ body.touch .touch-ui {
   box-sizing: border-box;
 }
 
-/* The action buttons, a diamond in the bottom-right corner (BEG joins in the Beg levels) */
+/* The action buttons: a small see-through diamond in the bottom-left corner, over the game
+   (BEG joins in the Beg levels). RUN sits nearest the thumb's side of the screen. */
 .buttons {
   position: absolute;
-  right: calc(10px + env(safe-area-inset-right));
-  bottom: calc(8px + env(safe-area-inset-bottom));
-  width: 204px; height: 204px;
+  left: calc(8px + env(safe-area-inset-left));
+  bottom: calc(6px + env(safe-area-inset-bottom));
+  width: 162px; height: 162px;
   display: none;
 }
+body.stick-left .buttons { left: auto; right: calc(8px + env(safe-area-inset-right)); }
 .touch-ui.playing .buttons { display: block; }
 .btn {
   position: absolute;
-  width: 64px; height: 64px;
+  width: 54px; height: 54px;
   border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  background: rgba(13, 15, 26, 0.45);
-  border: 3px solid rgba(242, 238, 226, 0.6);
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(13, 15, 26, 0.22);
+  border: 3px solid rgba(242, 238, 226, 0.45);
   box-sizing: border-box;
   pointer-events: auto;
   text-shadow: 0 1px 0 #2a2230;
 }
 .btn.down { background: rgba(255, 216, 74, 0.75); color: #2a2230; text-shadow: none; transform: scale(0.94); }
-.btn-sniff { left: 70px; top: 0; border-color: rgba(127, 224, 138, 0.65); }
-.btn-sniff.ready { box-shadow: 0 0 0 3px rgba(127, 224, 138, 0.35), 0 0 16px rgba(127, 224, 138, 0.55); }
-.btn-sneak { left: 0; top: 70px; border-color: rgba(154, 208, 255, 0.65); }
-.btn-run { left: 140px; top: 70px; border-color: rgba(255, 216, 74, 0.75); }
-.btn-bark { left: 70px; top: 140px; border-color: rgba(255, 154, 122, 0.65); }
-.btn-beg { left: 0; top: 0; border-color: rgba(255, 176, 64, 0.8); }
+.btn-sniff { left: 54px; top: 0; border-color: rgba(127, 224, 138, 0.55); }
+.btn-sniff.ready { box-shadow: 0 0 0 3px rgba(127, 224, 138, 0.3), 0 0 14px rgba(127, 224, 138, 0.5); }
+.btn-sneak { left: 108px; top: 54px; border-color: rgba(154, 208, 255, 0.55); }
+.btn-run { left: 0; top: 54px; border-color: rgba(255, 216, 74, 0.65); }
+.btn-bark { left: 54px; top: 108px; border-color: rgba(255, 154, 122, 0.55); }
+.btn-beg { left: 108px; top: 0; border-color: rgba(255, 176, 64, 0.7); }
+body.stick-left .btn-sneak { left: 0; }
+body.stick-left .btn-run { left: 108px; }
+body.stick-left .btn-beg { left: 0; }
 
 /* Pause while playing; a back cross on the menus */
 .corner-btn {
